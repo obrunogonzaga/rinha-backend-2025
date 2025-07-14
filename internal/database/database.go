@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/joho/godotenv/autoload"
+	"rinha-backend-2025/internal/models"
 )
 
 // Service represents a service that interacts with a database.
@@ -22,6 +23,9 @@ type Service interface {
 	// Close terminates the database connection.
 	// It returns an error if the connection cannot be closed.
 	Close() error
+
+	// CreatePayment creates a new payment record
+	CreatePayment(ctx context.Context, payment *models.Payment) error
 }
 
 type service struct {
@@ -112,4 +116,27 @@ func (s *service) Health() map[string]string {
 func (s *service) Close() error {
 	log.Printf("Disconnected from database: %s", database)
 	return s.db.Close()
+}
+
+// CreatePayment creates a new payment record in the database
+func (s *service) CreatePayment(ctx context.Context, payment *models.Payment) error {
+	query := `
+		INSERT INTO payments (correlation_id, amount, status, requested_at)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, created_at, updated_at`
+	
+	err := s.db.QueryRowContext(ctx, query, 
+		payment.CorrelationID, 
+		payment.Amount, 
+		payment.Status, 
+		payment.RequestedAt).Scan(
+		&payment.ID, 
+		&payment.CreatedAt, 
+		&payment.UpdatedAt)
+	
+	if err != nil {
+		return fmt.Errorf("failed to create payment: %w", err)
+	}
+	
+	return nil
 }
