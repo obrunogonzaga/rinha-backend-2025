@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/joho/godotenv/autoload"
 	"rinha-backend-2025/internal/models"
@@ -26,6 +27,15 @@ type Service interface {
 
 	// CreatePayment creates a new payment record
 	CreatePayment(ctx context.Context, payment *models.Payment) error
+	
+	// UpdatePaymentStatus updates the status of a payment
+	UpdatePaymentStatus(ctx context.Context, paymentID uuid.UUID, status models.PaymentStatus) error
+	
+	// CompletePayment updates payment with final processing details
+	CompletePayment(ctx context.Context, paymentID uuid.UUID, fee float64, processorType string) error
+	
+	// GetPaymentSummary returns payment summary grouped by processor type
+	GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) ([]models.PaymentSummary, error)
 }
 
 type service struct {
@@ -139,4 +149,107 @@ func (s *service) CreatePayment(ctx context.Context, payment *models.Payment) er
 	}
 	
 	return nil
+}
+
+// UpdatePaymentStatus updates the status of a payment
+func (s *service) UpdatePaymentStatus(ctx context.Context, paymentID uuid.UUID, status models.PaymentStatus) error {
+	query := `UPDATE payments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	
+	result, err := s.db.ExecContext(ctx, query, status, paymentID)
+	if err != nil {
+		return fmt.Errorf("failed to update payment status: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	if rowsAffected == 0 {
+		return fmt.Errorf("payment not found: %s", paymentID)
+	}
+	
+	return nil
+}
+
+// CompletePayment updates payment with final processing details
+func (s *service) CompletePayment(ctx context.Context, paymentID uuid.UUID, fee float64, processorType string) error {
+	query := `
+		UPDATE payments 
+		SET status = $1, fee = $2, processor_type = $3, processed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+		WHERE id = $4`
+	
+	result, err := s.db.ExecContext(ctx, query, models.PaymentStatusCompleted, fee, processorType, paymentID)
+	if err != nil {
+		return fmt.Errorf("failed to complete payment: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	if rowsAffected == 0 {
+		return fmt.Errorf("payment not found: %s", paymentID)
+	}
+	
+	return nil
+}
+
+// GetPaymentSummary returns payment summary grouped by processor type
+func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) ([]models.PaymentSummary, error) {
+	log.Printf("GetPaymentSummary called with startDate: %v, endDate: %v", startDate, endDate)
+	
+	// First, test if we can count all payments
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM payments").Scan(&count)
+	if err != nil {
+		log.Printf("Error counting payments: %v", err)
+		return nil, fmt.Errorf("failed to count payments: %w", err)
+	}
+	
+	log.Printf("Found %d payments in database", count)
+	
+	// If no payments, return empty slice
+	if count == 0 {
+		log.Printf("No payments found, returning empty slice")
+		return []models.PaymentSummary{}, nil
+	}
+	
+	query := `
+		SELECT 
+			COALESCE(processor_type, 'unknown') as processor_type,
+			COALESCE(SUM(amount), 0) as total_amount,
+			COALESCE(SUM(fee), 0) as total_fee,
+			COUNT(*) as count
+		FROM payments 
+		GROUP BY processor_type 
+		ORDER BY processor_type`
+	
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get payment summary: %w", err)
+	}
+	defer rows.Close()
+	
+	var summaries []models.PaymentSummary
+	for rows.Next() {
+		var summary models.PaymentSummary
+		err := rows.Scan(
+			&summary.ProcessorType,
+			&summary.TotalAmount,
+			&summary.TotalFee,
+			&summary.Count,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan payment summary: %w", err)
+		}
+		summaries = append(summaries, summary)
+	}
+	
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate payment summary rows: %w", err)
+	}
+	
+	return summaries, nil
 }
