@@ -16,6 +16,7 @@ type PaymentJob struct {
 	PaymentID     uuid.UUID
 	CorrelationID uuid.UUID
 	Amount        float64
+	RequestedAt   time.Time
 }
 
 type PaymentWorkerPool struct {
@@ -56,11 +57,12 @@ func (wp *PaymentWorkerPool) Stop() {
 	log.Println("Payment worker pool stopped")
 }
 
-func (wp *PaymentWorkerPool) SubmitPayment(paymentID, correlationID uuid.UUID, amount float64) error {
+func (wp *PaymentWorkerPool) SubmitPayment(paymentID, correlationID uuid.UUID, amount float64, requestedAt time.Time) error {
 	job := PaymentJob{
 		PaymentID:     paymentID,
 		CorrelationID: correlationID,
 		Amount:        amount,
+		RequestedAt:   requestedAt,
 	}
 
 	select {
@@ -95,7 +97,7 @@ func (wp *PaymentWorkerPool) worker(workerID int) {
 }
 
 func (wp *PaymentWorkerPool) processPayment(job PaymentJob, workerID int) {
-	log.Printf("Worker %d processing payment %s", workerID, job.PaymentID)
+	log.Printf("Worker %d processing payment %s with RequestedAt: %v", workerID, job.PaymentID, job.RequestedAt)
 	
 	ctx, cancel := context.WithTimeout(wp.ctx, 30*time.Second)
 	defer cancel()
@@ -105,7 +107,7 @@ func (wp *PaymentWorkerPool) processPayment(job PaymentJob, workerID int) {
 		return
 	}
 
-	resp, processorType, err := wp.processorService.ProcessPaymentWithFallback(ctx, job.CorrelationID, job.Amount)
+	resp, processorType, err := wp.processorService.ProcessPaymentWithFallback(ctx, job.CorrelationID, job.Amount, job.RequestedAt)
 	if err != nil {
 		log.Printf("Worker %d failed to process payment %s: %v", workerID, job.PaymentID, err)
 		
@@ -115,12 +117,22 @@ func (wp *PaymentWorkerPool) processPayment(job PaymentJob, workerID int) {
 		return
 	}
 
+	log.Printf("Worker %d successfully processed payment %s with %s processor, response: %s", workerID, job.PaymentID, processorType, resp.Message)
+
+	// Since the new API doesn't return fee, we'll use default values based on processor type
+	var fee float64
+	if processorType == processors.ProcessorTypeDefault {
+		fee = job.Amount * 0.03 // 3% for default processor
+	} else {
+		fee = job.Amount * 0.05 // 5% for fallback processor
+	}
+
 	processorTypeStr := string(processorType)
-	if err := wp.dbService.CompletePayment(ctx, job.PaymentID, resp.Fee, processorTypeStr); err != nil {
+	if err := wp.dbService.CompletePayment(ctx, job.PaymentID, fee, processorTypeStr); err != nil {
 		log.Printf("Worker %d failed to complete payment %s: %v", workerID, job.PaymentID, err)
 		return
 	}
 
 	log.Printf("Worker %d successfully processed payment %s using %s processor (fee: %.2f)", 
-		workerID, job.PaymentID, processorType, resp.Fee)
+		workerID, job.PaymentID, processorType, fee)
 }

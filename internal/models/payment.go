@@ -36,13 +36,9 @@ type PaymentResponse struct {
 	Message string `json:"message"`
 }
 
-type PaymentSummary struct {
-	ProcessorType string  `json:"processorType" db:"processor_type"`
-	TotalAmount   float64 `json:"totalAmount" db:"total_amount"`
-	TotalFee      float64 `json:"totalFee" db:"total_fee"`
-	Count         int     `json:"count" db:"count"`
+type ProcessorSummary struct {
+	TotalRequests int     `json:"totalRequests"`
+	TotalAmount   float64 `json:"totalAmount"`
 }
 
-type PaymentSummaryResponse struct {
-	Summary []PaymentSummary `json:"summary"`
-}
+type PaymentSummaryResponse map[string]ProcessorSummary

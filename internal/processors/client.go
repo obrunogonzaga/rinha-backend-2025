@@ -21,14 +21,11 @@ const (
 type PaymentProcessorRequest struct {
 	CorrelationID uuid.UUID `json:"correlationId"`
 	Amount        float64   `json:"amount"`
+	RequestedAt   string    `json:"requestedAt"`
 }
 
 type PaymentProcessorResponse struct {
-	ID            uuid.UUID `json:"id"`
-	CorrelationID uuid.UUID `json:"correlationId"`
-	Amount        float64   `json:"amount"`
-	Fee           float64   `json:"fee"`
-	Status        string    `json:"status"`
+	Message string `json:"message"`
 }
 
 type HealthResponse struct {
@@ -83,6 +80,11 @@ func (c *Client) ProcessPayment(ctx context.Context, req PaymentProcessorRequest
 	var processorResp PaymentProcessorResponse
 	if err := json.NewDecoder(resp.Body).Decode(&processorResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response from %s processor: %w", processorType, err)
+	}
+
+	// Validate response format
+	if processorResp.Message != "payment processed successfully" {
+		return nil, fmt.Errorf("%s processor returned invalid response message: %s", processorType, processorResp.Message)
 	}
 
 	return &processorResp, nil

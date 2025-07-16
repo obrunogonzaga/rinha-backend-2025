@@ -1,0 +1,76 @@
+graph TB
+    subgraph "Cliente/Teste"
+        Client[k6 Test Client]
+    end
+
+    subgraph "Load Balancer"
+        Nginx[Nginx<br/>0.15 CPU / 50MB]
+    end
+
+    subgraph "API Layer - Go/Echo"
+        API1[API Instance 1<br/>0.3 CPU / 150MB<br/>:9001]
+        API2[API Instance 2<br/>0.3 CPU / 150MB<br/>:9002]
+    end
+
+    subgraph "Storage & Queue"
+        PG[(PostgreSQL<br/>0.25 CPU / 100MB)]
+        Redis[(Redis<br/>0.2 CPU / 50MB)]
+    end
+
+    subgraph "Worker Pool"
+        Worker[Worker Pool<br/>0.4 CPU / 200MB<br/>N Goroutines]
+        CB1[Circuit Breaker<br/>Default]
+        CB2[Circuit Breaker<br/>Fallback]
+        HM[Health Monitor<br/>Goroutine]
+    end
+
+    subgraph "External Services"
+        PP1[Payment Processor<br/>Default<br/>Taxa: 0.01]
+        PP2[Payment Processor<br/>Fallback<br/>Taxa: 0.10]
+    end
+
+    %% Client connections
+    Client -->|:9999| Nginx
+    
+    %% Nginx to APIs
+    Nginx -->|Round Robin| API1
+    Nginx -->|Round Robin| API2
+    
+    %% API to Storage
+    API1 -->|1. Persist Payment| PG
+    API2 -->|1. Persist Payment| PG
+    API1 -->|2. Publish to Queue| Redis
+    API2 -->|2. Publish to Queue| Redis
+    
+    %% Worker connections
+    Worker -->|Consume| Redis
+    Worker -->|Update Status| PG
+    Worker <-->|Check Status| CB1
+    Worker <-->|Check Status| CB2
+    
+    %% Circuit Breakers to Processors
+    CB1 -->|HTTP Request| PP1
+    CB2 -->|HTTP Request| PP2
+    
+    %% Health Monitor
+    HM -->|Health Check<br/>Every 5s| PP1
+    HM -->|Health Check<br/>Every 5s| PP2
+    HM -->|Update Cache| Redis
+    
+    %% Response flow
+    API1 -.->|202 Accepted| Nginx
+    API2 -.->|202 Accepted| Nginx
+    Nginx -.->|Response| Client
+
+    %% Styling
+    classDef api fill:#4CAF50,stroke:#333,stroke-width:2px,color:#fff
+    classDef storage fill:#2196F3,stroke:#333,stroke-width:2px,color:#fff
+    classDef worker fill:#FF9800,stroke:#333,stroke-width:2px,color:#fff
+    classDef external fill:#f44336,stroke:#333,stroke-width:2px,color:#fff
+    classDef lb fill:#9C27B0,stroke:#333,stroke-width:2px,color:#fff
+    
+    class API1,API2 api
+    class PG,Redis storage
+    class Worker,CB1,CB2,HM worker
+    class PP1,PP2 external
+    class Nginx lb

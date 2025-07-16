@@ -1,0 +1,95 @@
+graph TB
+    subgraph "Go Application Structure - Echo Framework"
+        subgraph "API Server (Echo)"
+            Main[main.go<br/>Entry Point]
+            Router[Echo Router<br/>Built-in]
+            
+            subgraph "Handlers"
+                PH[PaymentHandler<br/>handlers/payment.go]
+                SH[SummaryHandler<br/>handlers/summary.go]
+                HH[HealthHandler<br/>handlers/health.go]
+            end
+            
+            subgraph "Middleware"
+                Val[Validator<br/>middleware/validator.go]
+                Log[Logger<br/>Echo Logger]
+                Metrics[Metrics<br/>middleware/prometheus.go]
+                RateLimit[Rate Limiter<br/>middleware/ratelimit.go]
+            end
+        end
+        
+        subgraph "Core Domain"
+            Models[Models<br/>models/payment.go]
+            Service[PaymentService<br/>services/payment.go]
+            Repo[Repository<br/>repository/postgres.go]
+        end
+        
+        subgraph "Infrastructure"
+            DB[Database Pool<br/>pkg/database/pgx.go]
+            Queue[Redis Client<br/>pkg/queue/redis.go]
+            HTTP[HTTP Client Pool<br/>pkg/httpclient/resty.go]
+        end
+        
+        subgraph "Worker System"
+            WM[Worker Manager<br/>worker/manager.go]
+            WP[Worker Pool<br/>worker/pool.go]
+            Proc[Processor<br/>worker/processor.go]
+            
+            subgraph "Resilience"
+                CB[Circuit Breaker<br/>pkg/circuitbreaker/breaker.go]
+                Retry[Retry Logic<br/>pkg/retry/backoff.go]
+                Timeout[Adaptive Timeout<br/>pkg/timeout/adaptive.go]
+            end
+            
+            HMon[Health Monitor<br/>monitor/health.go]
+        end
+        
+        subgraph "Shared Components"
+            Config[Config<br/>config/config.go]
+            Logger[Zerolog<br/>pkg/logger/logger.go]
+            Tracer[OpenTelemetry<br/>pkg/tracer/tracer.go]
+        end
+    end
+    
+    %% API Flow
+    Main --> Router
+    Router --> PH
+    Router --> SH
+    Router --> HH
+    PH --> Val
+    SH --> Val
+    Val --> Service
+    Service --> Repo
+    Service --> Queue
+    Repo --> DB
+    
+    %% Worker Flow
+    WM --> WP
+    WP --> Proc
+    Proc --> CB
+    Proc --> Retry
+    Proc --> Timeout
+    Proc --> HTTP
+    HMon --> HTTP
+    HMon --> Queue
+    
+    %% Shared Resources
+    Service --> Models
+    Proc --> Models
+    Repo --> Models
+    Main --> Config
+    Service --> Logger
+    Proc --> Logger
+    
+    %% Styling
+    classDef handler fill:#4CAF50,stroke:#333,stroke-width:2px
+    classDef core fill:#2196F3,stroke:#333,stroke-width:2px
+    classDef infra fill:#FF9800,stroke:#333,stroke-width:2px
+    classDef worker fill:#9C27B0,stroke:#333,stroke-width:2px
+    classDef shared fill:#607D8B,stroke:#333,stroke-width:2px
+    
+    class PH,SH,HH handler
+    class Models,Service,Repo core
+    class DB,Queue,HTTP infra
+    class WM,WP,Proc,CB,Retry,Timeout,HMon worker
+    class Config,Logger,Tracer shared

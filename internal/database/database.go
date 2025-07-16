@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -35,7 +36,10 @@ type Service interface {
 	CompletePayment(ctx context.Context, paymentID uuid.UUID, fee float64, processorType string) error
 	
 	// GetPaymentSummary returns payment summary grouped by processor type
-	GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) ([]models.PaymentSummary, error)
+	GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) (models.PaymentSummaryResponse, error)
+	
+	// ClearPayments removes all payments from the table (for testing)
+	ClearPayments(ctx context.Context) error
 }
 
 type service struct {
@@ -133,7 +137,7 @@ func (s *service) CreatePayment(ctx context.Context, payment *models.Payment) er
 	query := `
 		INSERT INTO payments (correlation_id, amount, status, requested_at)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at, updated_at`
+		RETURNING id, requested_at, created_at, updated_at`
 	
 	err := s.db.QueryRowContext(ctx, query, 
 		payment.CorrelationID, 
@@ -141,6 +145,7 @@ func (s *service) CreatePayment(ctx context.Context, payment *models.Payment) er
 		payment.Status, 
 		payment.RequestedAt).Scan(
 		&payment.ID, 
+		&payment.RequestedAt,
 		&payment.CreatedAt, 
 		&payment.UpdatedAt)
 	
@@ -197,59 +202,77 @@ func (s *service) CompletePayment(ctx context.Context, paymentID uuid.UUID, fee 
 }
 
 // GetPaymentSummary returns payment summary grouped by processor type
-func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) ([]models.PaymentSummary, error) {
+func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) (models.PaymentSummaryResponse, error) {
 	log.Printf("GetPaymentSummary called with startDate: %v, endDate: %v", startDate, endDate)
 	
-	// First, test if we can count all payments
-	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM payments").Scan(&count)
-	if err != nil {
-		log.Printf("Error counting payments: %v", err)
-		return nil, fmt.Errorf("failed to count payments: %w", err)
-	}
-	
-	log.Printf("Found %d payments in database", count)
-	
-	// If no payments, return empty slice
-	if count == 0 {
-		log.Printf("No payments found, returning empty slice")
-		return []models.PaymentSummary{}, nil
-	}
-	
+	// Build query with optional date filtering
 	query := `
 		SELECT 
 			COALESCE(processor_type, 'unknown') as processor_type,
 			COALESCE(SUM(amount), 0) as total_amount,
-			COALESCE(SUM(fee), 0) as total_fee,
-			COUNT(*) as count
-		FROM payments 
-		GROUP BY processor_type 
-		ORDER BY processor_type`
+			COUNT(*) as total_requests
+		FROM payments`
 	
-	rows, err := s.db.QueryContext(ctx, query)
+	var args []interface{}
+	var conditions []string
+	
+	if startDate != nil {
+		conditions = append(conditions, "created_at >= $"+fmt.Sprintf("%d", len(args)+1))
+		args = append(args, *startDate)
+	}
+	
+	if endDate != nil {
+		conditions = append(conditions, "created_at <= $"+fmt.Sprintf("%d", len(args)+1))
+		args = append(args, *endDate)
+	}
+	
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	
+	query += ` GROUP BY processor_type ORDER BY processor_type`
+	
+	log.Printf("Executing query: %s with args: %v", query, args)
+	
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get payment summary: %w", err)
 	}
 	defer rows.Close()
 	
-	var summaries []models.PaymentSummary
+	result := make(models.PaymentSummaryResponse)
+	
 	for rows.Next() {
-		var summary models.PaymentSummary
-		err := rows.Scan(
-			&summary.ProcessorType,
-			&summary.TotalAmount,
-			&summary.TotalFee,
-			&summary.Count,
-		)
+		var processorType string
+		var totalAmount float64
+		var totalRequests int
+		
+		err := rows.Scan(&processorType, &totalAmount, &totalRequests)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan payment summary: %w", err)
 		}
-		summaries = append(summaries, summary)
+		
+		result[processorType] = models.ProcessorSummary{
+			TotalRequests: totalRequests,
+			TotalAmount:   totalAmount,
+		}
 	}
 	
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate payment summary rows: %w", err)
 	}
 	
-	return summaries, nil
+	return result, nil
+}
+
+// ClearPayments removes all payments from the table (for testing)
+func (s *service) ClearPayments(ctx context.Context) error {
+	query := `TRUNCATE TABLE payments`
+	
+	_, err := s.db.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to clear payments: %w", err)
+	}
+	
+	return nil
 }

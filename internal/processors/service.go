@@ -27,10 +27,11 @@ func NewProcessorService(defaultURL, fallbackURL string) *ProcessorService {
 	}
 }
 
-func (ps *ProcessorService) ProcessPaymentWithFallback(ctx context.Context, correlationID uuid.UUID, amount float64) (*PaymentProcessorResponse, ProcessorType, error) {
+func (ps *ProcessorService) ProcessPaymentWithFallback(ctx context.Context, correlationID uuid.UUID, amount float64, requestedAt time.Time) (*PaymentProcessorResponse, ProcessorType, error) {
 	req := PaymentProcessorRequest{
 		CorrelationID: correlationID,
 		Amount:        amount,
+		RequestedAt:   requestedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
 	}
 
 	processorOrder := []ProcessorType{ProcessorTypeDefault, ProcessorTypeFallback}
