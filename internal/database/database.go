@@ -7,8 +7,10 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/joho/godotenv/autoload"
 	"rinha-backend-2025/internal/models"
@@ -26,6 +28,18 @@ type Service interface {
 
 	// CreatePayment creates a new payment record
 	CreatePayment(ctx context.Context, payment *models.Payment) error
+	
+	// UpdatePaymentStatus updates the status of a payment
+	UpdatePaymentStatus(ctx context.Context, paymentID uuid.UUID, status models.PaymentStatus) error
+	
+	// CompletePayment updates payment with final processing details
+	CompletePayment(ctx context.Context, paymentID uuid.UUID, fee float64, processorType string) error
+	
+	// GetPaymentSummary returns payment summary grouped by processor type
+	GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) (models.PaymentSummaryResponse, error)
+	
+	// ClearPayments removes all payments from the table (for testing)
+	ClearPayments(ctx context.Context) error
 }
 
 type service struct {
@@ -123,7 +137,7 @@ func (s *service) CreatePayment(ctx context.Context, payment *models.Payment) er
 	query := `
 		INSERT INTO payments (correlation_id, amount, status, requested_at)
 		VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at, updated_at`
+		RETURNING id, requested_at, created_at, updated_at`
 	
 	err := s.db.QueryRowContext(ctx, query, 
 		payment.CorrelationID, 
@@ -131,11 +145,133 @@ func (s *service) CreatePayment(ctx context.Context, payment *models.Payment) er
 		payment.Status, 
 		payment.RequestedAt).Scan(
 		&payment.ID, 
+		&payment.RequestedAt,
 		&payment.CreatedAt, 
 		&payment.UpdatedAt)
 	
 	if err != nil {
 		return fmt.Errorf("failed to create payment: %w", err)
+	}
+	
+	return nil
+}
+
+// UpdatePaymentStatus updates the status of a payment
+func (s *service) UpdatePaymentStatus(ctx context.Context, paymentID uuid.UUID, status models.PaymentStatus) error {
+	query := `UPDATE payments SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	
+	result, err := s.db.ExecContext(ctx, query, status, paymentID)
+	if err != nil {
+		return fmt.Errorf("failed to update payment status: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	if rowsAffected == 0 {
+		return fmt.Errorf("payment not found: %s", paymentID)
+	}
+	
+	return nil
+}
+
+// CompletePayment updates payment with final processing details
+func (s *service) CompletePayment(ctx context.Context, paymentID uuid.UUID, fee float64, processorType string) error {
+	query := `
+		UPDATE payments 
+		SET status = $1, fee = $2, processor_type = $3, processed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+		WHERE id = $4`
+	
+	result, err := s.db.ExecContext(ctx, query, models.PaymentStatusCompleted, fee, processorType, paymentID)
+	if err != nil {
+		return fmt.Errorf("failed to complete payment: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	if rowsAffected == 0 {
+		return fmt.Errorf("payment not found: %s", paymentID)
+	}
+	
+	return nil
+}
+
+// GetPaymentSummary returns payment summary grouped by processor type
+func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) (models.PaymentSummaryResponse, error) {
+	log.Printf("GetPaymentSummary called with startDate: %v, endDate: %v", startDate, endDate)
+	
+	// Build query with optional date filtering
+	query := `
+		SELECT 
+			COALESCE(processor_type, 'unknown') as processor_type,
+			COALESCE(SUM(amount), 0) as total_amount,
+			COUNT(*) as total_requests
+		FROM payments`
+	
+	var args []interface{}
+	var conditions []string
+	
+	if startDate != nil {
+		conditions = append(conditions, "created_at >= $"+fmt.Sprintf("%d", len(args)+1))
+		args = append(args, *startDate)
+	}
+	
+	if endDate != nil {
+		conditions = append(conditions, "created_at <= $"+fmt.Sprintf("%d", len(args)+1))
+		args = append(args, *endDate)
+	}
+	
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	
+	query += ` GROUP BY processor_type ORDER BY processor_type`
+	
+	log.Printf("Executing query: %s with args: %v", query, args)
+	
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get payment summary: %w", err)
+	}
+	defer rows.Close()
+	
+	result := make(models.PaymentSummaryResponse)
+	
+	for rows.Next() {
+		var processorType string
+		var totalAmount float64
+		var totalRequests int
+		
+		err := rows.Scan(&processorType, &totalAmount, &totalRequests)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan payment summary: %w", err)
+		}
+		
+		result[processorType] = models.ProcessorSummary{
+			TotalRequests: totalRequests,
+			TotalAmount:   totalAmount,
+		}
+	}
+	
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate payment summary rows: %w", err)
+	}
+	
+	return result, nil
+}
+
+// ClearPayments removes all payments from the table (for testing)
+func (s *service) ClearPayments(ctx context.Context) error {
+	query := `TRUNCATE TABLE payments`
+	
+	_, err := s.db.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to clear payments: %w", err)
 	}
 	
 	return nil

@@ -44,6 +44,11 @@ clean:
 	@echo "Cleaning..."
 	@rm -f main
 
+# Clean database data
+clean-db:
+	@echo "Cleaning database data..."
+	@docker exec -i $$(docker ps -q -f name=psql_bp) psql -U rinha -d rinha_db -c "TRUNCATE TABLE payments;"
+
 # Live Reload
 watch:
 	@if command -v air > /dev/null; then \
@@ -61,4 +66,4 @@ watch:
             fi; \
         fi
 
-.PHONY: all build run test clean watch docker-run docker-down itest
+.PHONY: all build run test clean clean-db watch docker-run docker-down itest

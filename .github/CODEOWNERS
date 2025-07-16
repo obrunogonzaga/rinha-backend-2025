@@ -1,0 +1,10 @@
+# Global code ownership
+# All files require approval from @obrunogonzaga
+* @obrunogonzaga
+
+# Specific ownership for critical files
+/.github/ @obrunogonzaga
+/internal/ @obrunogonzaga
+/cmd/ @obrunogonzaga
+/docker-compose.yml @obrunogonzaga
+/Makefile @obrunogonzaga
