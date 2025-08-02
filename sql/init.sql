@@ -16,3 +16,6 @@ CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
 CREATE INDEX IF NOT EXISTS idx_payments_requested_at ON payments(requested_at);
 CREATE INDEX IF NOT EXISTS idx_payments_processor_type ON payments(processor_type);
 CREATE INDEX IF NOT EXISTS idx_payments_processed_at ON payments(processed_at);
+
+-- Composite index for payment summary queries (status + created_at + processor_type)
+CREATE INDEX IF NOT EXISTS idx_payments_summary ON payments(status, created_at, processor_type) WHERE status = 'completed';

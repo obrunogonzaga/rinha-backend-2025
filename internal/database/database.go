@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,6 +65,13 @@ func New() Service {
 	if err != nil {
 		log.Fatal(err)
 	}
+	
+	// Configure connection pool for high throughput
+	db.SetMaxOpenConns(25)    // Maximum number of open connections
+	db.SetMaxIdleConns(10)    // Maximum number of idle connections
+	db.SetConnMaxLifetime(5 * time.Minute)  // Maximum lifetime of a connection
+	db.SetConnMaxIdleTime(5 * time.Minute)  // Maximum idle time of a connection
+	
 	dbInstance = &service{
 		db: db,
 	}
@@ -203,36 +209,28 @@ func (s *service) CompletePayment(ctx context.Context, paymentID uuid.UUID, fee 
 
 // GetPaymentSummary returns payment summary grouped by processor type
 func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *time.Time) (models.PaymentSummaryResponse, error) {
-	log.Printf("GetPaymentSummary called with startDate: %v, endDate: %v", startDate, endDate)
-	
-	// Build query with optional date filtering
+	// Build optimized query with filtering only on completed payments
 	query := `
 		SELECT 
-			COALESCE(processor_type, 'unknown') as processor_type,
+			COALESCE(processor_type, 'fallback') as processor_type,
 			COALESCE(SUM(amount), 0) as total_amount,
 			COUNT(*) as total_requests
-		FROM payments`
+		FROM payments 
+		WHERE status = 'completed'`
 	
 	var args []interface{}
-	var conditions []string
 	
 	if startDate != nil {
-		conditions = append(conditions, "created_at >= $"+fmt.Sprintf("%d", len(args)+1))
+		query += " AND created_at >= $" + fmt.Sprintf("%d", len(args)+1)
 		args = append(args, *startDate)
 	}
 	
 	if endDate != nil {
-		conditions = append(conditions, "created_at <= $"+fmt.Sprintf("%d", len(args)+1))
+		query += " AND created_at <= $" + fmt.Sprintf("%d", len(args)+1)
 		args = append(args, *endDate)
 	}
 	
-	if len(conditions) > 0 {
-		query += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	
-	query += ` GROUP BY processor_type ORDER BY processor_type`
-	
-	log.Printf("Executing query: %s with args: %v", query, args)
+	query += ` GROUP BY processor_type`
 	
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -241,6 +239,16 @@ func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *tim
 	defer rows.Close()
 	
 	result := make(models.PaymentSummaryResponse)
+	
+	// Initialize with zero values to ensure we always have default and fallback
+	result["default"] = models.ProcessorSummary{
+		TotalRequests: 0,
+		TotalAmount:   0.0,
+	}
+	result["fallback"] = models.ProcessorSummary{
+		TotalRequests: 0,
+		TotalAmount:   0.0,
+	}
 	
 	for rows.Next() {
 		var processorType string
@@ -252,9 +260,26 @@ func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *tim
 			return nil, fmt.Errorf("failed to scan payment summary: %w", err)
 		}
 		
-		result[processorType] = models.ProcessorSummary{
-			TotalRequests: totalRequests,
-			TotalAmount:   totalAmount,
+		// Only allow valid processor types - map unknown to fallback
+		if processorType == "unknown" || processorType == "" {
+			processorType = "fallback"
+			// Map unknown to fallback silently
+		}
+		
+		// Update the result with actual data
+		if processorType == "default" || processorType == "fallback" {
+			result[processorType] = models.ProcessorSummary{
+				TotalRequests: totalRequests,
+				TotalAmount:   totalAmount,
+			}
+		} else {
+			// Any other processor type gets added to fallback
+			existing := result["fallback"]
+			result["fallback"] = models.ProcessorSummary{
+				TotalRequests: existing.TotalRequests + totalRequests,
+				TotalAmount:   existing.TotalAmount + totalAmount,
+			}
+			log.Printf("Added %s processor data to fallback totals", processorType)
 		}
 	}
 	
@@ -262,6 +287,7 @@ func (s *service) GetPaymentSummary(ctx context.Context, startDate, endDate *tim
 		return nil, fmt.Errorf("failed to iterate payment summary rows: %w", err)
 	}
 	
+	log.Printf("Final payment summary: %+v", result)
 	return result, nil
 }
 

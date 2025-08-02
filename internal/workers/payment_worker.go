@@ -10,33 +10,28 @@ import (
 	"rinha-backend-2025/internal/database"
 	"rinha-backend-2025/internal/models"
 	"rinha-backend-2025/internal/processors"
+	"rinha-backend-2025/internal/redis"
 )
 
-type PaymentJob struct {
-	PaymentID     uuid.UUID
-	CorrelationID uuid.UUID
-	Amount        float64
-	RequestedAt   time.Time
-}
 
 type PaymentWorkerPool struct {
-	jobQueue         chan PaymentJob
 	workers          int
 	processorService *processors.ProcessorService
 	dbService        database.Service
+	redisService     *redis.Service
 	wg               sync.WaitGroup
 	ctx              context.Context
 	cancel           context.CancelFunc
 }
 
-func NewPaymentWorkerPool(workers int, queueSize int, processorService *processors.ProcessorService, dbService database.Service) *PaymentWorkerPool {
+func NewPaymentWorkerPool(workers int, processorService *processors.ProcessorService, dbService database.Service, redisService *redis.Service) *PaymentWorkerPool {
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	return &PaymentWorkerPool{
-		jobQueue:         make(chan PaymentJob, queueSize),
 		workers:          workers,
 		processorService: processorService,
 		dbService:        dbService,
+		redisService:     redisService,
 		ctx:              ctx,
 		cancel:           cancel,
 	}
@@ -51,88 +46,132 @@ func (wp *PaymentWorkerPool) Start() {
 }
 
 func (wp *PaymentWorkerPool) Stop() {
-	close(wp.jobQueue)
 	wp.cancel()
 	wp.wg.Wait()
 	log.Println("Payment worker pool stopped")
 }
 
-func (wp *PaymentWorkerPool) SubmitPayment(paymentID, correlationID uuid.UUID, amount float64, requestedAt time.Time) error {
-	job := PaymentJob{
-		PaymentID:     paymentID,
-		CorrelationID: correlationID,
-		Amount:        amount,
-		RequestedAt:   requestedAt,
-	}
-
-	select {
-	case wp.jobQueue <- job:
-		return nil
-	case <-wp.ctx.Done():
-		return wp.ctx.Err()
-	default:
-		return nil
-	}
-}
-
 func (wp *PaymentWorkerPool) worker(workerID int) {
 	defer wp.wg.Done()
 	
-	log.Printf("Payment worker %d started", workerID)
-	
 	for {
 		select {
-		case job, ok := <-wp.jobQueue:
-			if !ok {
-				log.Printf("Payment worker %d stopped - job queue closed", workerID)
-				return
-			}
-			wp.processPayment(job, workerID)
-			
 		case <-wp.ctx.Done():
-			log.Printf("Payment worker %d stopped - context cancelled", workerID)
 			return
+		default:
+			// Try to consume a job from Redis
+			job, err := wp.redisService.ConsumePaymentJob(wp.ctx)
+			if err != nil {
+				// If context is cancelled, exit
+				if wp.ctx.Err() != nil {
+					return
+				}
+				// For other errors (like timeout), continue to next iteration
+				continue
+			}
+			
+			// Process the job directly
+			wp.processPayment(*job, workerID)
 		}
 	}
 }
 
-func (wp *PaymentWorkerPool) processPayment(job PaymentJob, workerID int) {
-	log.Printf("Worker %d processing payment %s with RequestedAt: %v", workerID, job.PaymentID, job.RequestedAt)
-	
+func (wp *PaymentWorkerPool) processPayment(job redis.PaymentJob, _ int) {
 	ctx, cancel := context.WithTimeout(wp.ctx, 30*time.Second)
 	defer cancel()
 
-	if err := wp.dbService.UpdatePaymentStatus(ctx, job.PaymentID, models.PaymentStatusProcessing); err != nil {
-		log.Printf("Worker %d failed to update payment %s to processing: %v", workerID, job.PaymentID, err)
+	// Parse UUIDs from strings
+	paymentID, err := uuid.Parse(job.PaymentID)
+	if err != nil {
+		return
+	}
+	
+	correlationID, err := uuid.Parse(job.CorrelationID)
+	if err != nil {
+		return
+	}
+	
+	// Convert amount from cents to currency units
+	amount := float64(job.Amount) / 100
+	requestedAt := time.Now() // Use current time since it's not stored in Redis job
+
+	if err := wp.dbService.UpdatePaymentStatus(ctx, paymentID, models.PaymentStatusProcessing); err != nil {
 		return
 	}
 
-	resp, processorType, err := wp.processorService.ProcessPaymentWithFallback(ctx, job.CorrelationID, job.Amount, job.RequestedAt)
+	_, processorType, err := wp.processorService.ProcessPaymentWithFallback(ctx, correlationID, amount, requestedAt)
+	
 	if err != nil {
-		log.Printf("Worker %d failed to process payment %s: %v", workerID, job.PaymentID, err)
-		
-		if updateErr := wp.dbService.UpdatePaymentStatus(ctx, job.PaymentID, models.PaymentStatusFailed); updateErr != nil {
-			log.Printf("Worker %d failed to update payment %s to failed: %v", workerID, job.PaymentID, updateErr)
+		// Schedule for retry instead of marking as failed
+		if retryErr := wp.redisService.RetryPaymentJob(ctx, &job); retryErr != nil {
+			// Only fail if we can't even schedule retry
+			wp.dbService.UpdatePaymentStatus(ctx, paymentID, models.PaymentStatusFailed)
 		}
 		return
 	}
 
-	log.Printf("Worker %d successfully processed payment %s with %s processor, response: %s", workerID, job.PaymentID, processorType, resp.Message)
-
-	// Since the new API doesn't return fee, we'll use default values based on processor type
+	// Calculate fee based on processor type
 	var fee float64
 	if processorType == processors.ProcessorTypeDefault {
-		fee = job.Amount * 0.03 // 3% for default processor
+		fee = amount * 0.03 // 3% for default processor
 	} else {
-		fee = job.Amount * 0.05 // 5% for fallback processor
+		fee = amount * 0.05 // 5% for fallback processor
 	}
 
+	// Complete payment
 	processorTypeStr := string(processorType)
-	if err := wp.dbService.CompletePayment(ctx, job.PaymentID, fee, processorTypeStr); err != nil {
-		log.Printf("Worker %d failed to complete payment %s: %v", workerID, job.PaymentID, err)
-		return
-	}
+	wp.dbService.CompletePayment(ctx, paymentID, fee, processorTypeStr)
+}
 
-	log.Printf("Worker %d successfully processed payment %s using %s processor (fee: %.2f)", 
-		workerID, job.PaymentID, processorType, fee)
+// RetryProcessor processes retry jobs and DLQ
+type RetryProcessor struct {
+	redisService *redis.Service
+	wg           sync.WaitGroup
+	ctx          context.Context
+	cancel       context.CancelFunc
+}
+
+// NewRetryProcessor creates a new retry processor
+func NewRetryProcessor(redisService *redis.Service) *RetryProcessor {
+	ctx, cancel := context.WithCancel(context.Background())
+	
+	return &RetryProcessor{
+		redisService: redisService,
+		ctx:          ctx,
+		cancel:       cancel,
+	}
+}
+
+// Start begins the retry processing goroutine
+func (rp *RetryProcessor) Start() {
+	rp.wg.Add(1)
+	go rp.processRetries()
+	log.Println("Retry processor started")
+}
+
+// Stop stops the retry processing goroutine
+func (rp *RetryProcessor) Stop() {
+	rp.cancel()
+	rp.wg.Wait()
+	log.Println("Retry processor stopped")
+}
+
+// processRetries continuously processes retry jobs
+func (rp *RetryProcessor) processRetries() {
+	defer rp.wg.Done()
+	
+	ticker := time.NewTicker(10 * time.Second) // Check every 10 seconds
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-ticker.C:
+			if err := rp.redisService.ProcessRetryJobs(rp.ctx); err != nil {
+				log.Printf("Retry processor failed to process retry jobs: %v", err)
+			}
+		case <-rp.ctx.Done():
+			log.Println("Retry processor goroutine stopping")
+			return
+		}
+	}
 }

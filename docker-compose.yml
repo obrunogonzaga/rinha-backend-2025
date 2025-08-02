@@ -16,8 +16,22 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.25"
-          memory: "125MB"
+          cpus: "0.15"
+          memory: "80MB"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 30mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: "40MB"
 
   api-1:
     build: .
@@ -30,20 +44,23 @@ services:
       - BLUEPRINT_DB_USERNAME=${BLUEPRINT_DB_USERNAME}
       - BLUEPRINT_DB_PASSWORD=${BLUEPRINT_DB_PASSWORD}
       - BLUEPRINT_DB_SCHEMA=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - PAYMENT_PROCESSOR_URL_DEFAULT=http://payment-processor-default:8080
       - PAYMENT_PROCESSOR_URL_FALLBACK=http://payment-processor-fallback:8080
     ports:
       - "8081:8080"
     depends_on:
       - psql_bp
+      - redis
     networks:
       - backend
       - payment-processor
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "100MB"
+          cpus: "0.45"
+          memory: "90MB"
 
   api-2:
     build: .
@@ -56,20 +73,23 @@ services:
       - BLUEPRINT_DB_USERNAME=${BLUEPRINT_DB_USERNAME}
       - BLUEPRINT_DB_PASSWORD=${BLUEPRINT_DB_PASSWORD}
       - BLUEPRINT_DB_SCHEMA=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - PAYMENT_PROCESSOR_URL_DEFAULT=http://payment-processor-default:8080
       - PAYMENT_PROCESSOR_URL_FALLBACK=http://payment-processor-fallback:8080
     ports:
       - "8082:8080"
     depends_on:
       - psql_bp
+      - redis
     networks:
       - backend
       - payment-processor
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: "100MB"
+          cpus: "0.45"
+          memory: "90MB"
 
   nginx:
     image: nginx:alpine
@@ -86,8 +106,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.25"
-          memory: "25MB"
+          cpus: "0.30"
+          memory: "50MB"
 
 volumes:
   psql_volume_bp:
