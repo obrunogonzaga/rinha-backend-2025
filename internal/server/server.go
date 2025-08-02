@@ -20,6 +20,7 @@ type Server struct {
 	port           int
 	db             database.Service
 	redisService   *redis.Service
+	redisStorage   *redis.StorageService
 	healthMonitor  *healthmonitor.HealthMonitor
 	workerPool     *workers.PaymentWorkerPool
 	retryProcessor *workers.RetryProcessor
@@ -50,6 +51,7 @@ func NewServer() (*http.Server, *Server) {
 	
 	redisClient := redis.NewClient(redisConfig)
 	redisService := redis.NewService(redisClient)
+	redisStorage := redis.NewStorageService(redisClient)
 	
 	defaultURL := os.Getenv("PAYMENT_PROCESSOR_URL_DEFAULT")
 	if defaultURL == "" {
@@ -74,7 +76,7 @@ func NewServer() (*http.Server, *Server) {
 	healthMonitor := healthmonitor.NewHealthMonitor(processorClient, redisService, healthMonitorConfig)
 	healthMonitor.Start()
 	
-	workerPool := workers.NewPaymentWorkerPool(5, processorService, dbService, redisService)
+	workerPool := workers.NewPaymentWorkerPool(5, processorService, redisStorage, redisService)
 	workerPool.Start()
 	
 	// Initialize retry processor
@@ -85,6 +87,7 @@ func NewServer() (*http.Server, *Server) {
 		port:           port,
 		db:             dbService,
 		redisService:   redisService,
+		redisStorage:   redisStorage,
 		healthMonitor:  healthMonitor,
 		workerPool:     workerPool,
 		retryProcessor: retryProcessor,

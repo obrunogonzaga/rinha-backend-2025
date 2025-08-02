@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"rinha-backend-2025/internal/models"
 )
 
 const (
-	// Queue names
-	PaymentQueue    = "payments:queue"
-	PaymentDLQ      = "payments:dlq"
-	PaymentRetrySet = "payments:retry"
+	// Single queue for simplicity
+	PaymentQueue = "payments:queue"
 	
 	// Health cache keys
 	HealthKeyPrefix = "health:"
@@ -22,10 +19,6 @@ const (
 	// Default timeouts
 	DefaultConsumeTimeout = 10 * time.Second
 	DefaultHealthTTL      = 30 * time.Second
-	
-	// Retry settings
-	MaxRetries = 3
-	BaseRetryDelay = 30 * time.Second
 )
 
 // Service provides Redis operations for the application
@@ -40,25 +33,21 @@ func NewService(client *Client) *Service {
 	}
 }
 
-// PaymentJob represents a payment job in the queue
+// PaymentJob represents a payment job in the queue - simplified
 type PaymentJob struct {
 	PaymentID     string    `json:"payment_id"`
 	CorrelationID string    `json:"correlation_id"`
 	Amount        int64     `json:"amount"`
-	RetryCount    int       `json:"retry_count"`
-	LastAttempt   time.Time `json:"last_attempt"`
-	NextRetry     time.Time `json:"next_retry"`
+	RequestedAt   time.Time `json:"requested_at"`
 }
 
-// PublishPaymentJob publishes a payment job to the queue
+// PublishPaymentJob publishes a payment job to the single queue
 func (s *Service) PublishPaymentJob(ctx context.Context, payment *models.Payment) error {
 	job := PaymentJob{
 		PaymentID:     payment.ID.String(),
 		CorrelationID: payment.CorrelationID.String(),
 		Amount:        int64(payment.Amount * 100), // Convert to cents
-		RetryCount:    0,
-		LastAttempt:   time.Now(),
-		NextRetry:     time.Now(),
+		RequestedAt:   payment.RequestedAt,        // Use same timestamp as stored payment
 	}
 
 	return s.client.PublishJob(ctx, PaymentQueue, job)
@@ -128,89 +117,19 @@ func (s *Service) Ping(ctx context.Context) error {
 	return s.client.Ping(ctx)
 }
 
-// RetryPaymentJob schedules a job for retry with exponential backoff
+// RetryPaymentJob simply puts failed payment back to main queue
 func (s *Service) RetryPaymentJob(ctx context.Context, job *PaymentJob) error {
-	job.RetryCount++
-	job.LastAttempt = time.Now()
-	
-	if job.RetryCount > MaxRetries {
-		// Move to Dead Letter Queue
-		return s.client.PublishJob(ctx, PaymentDLQ, job)
-	}
-	
-	// Calculate next retry time with exponential backoff
-	backoffDuration := BaseRetryDelay * time.Duration(1<<uint(job.RetryCount-1)) // 30s, 60s, 120s
-	job.NextRetry = time.Now().Add(backoffDuration)
-	
-	// Use sorted set for delayed retry
-	score := float64(job.NextRetry.Unix())
-	jsonData, err := json.Marshal(job)
-	if err != nil {
-		return fmt.Errorf("failed to marshal retry job: %w", err)
-	}
-	
-	return s.client.rdb.ZAdd(ctx, PaymentRetrySet, redis.Z{
-		Score:  score,
-		Member: string(jsonData),
-	}).Err()
+	// Simple retry: just put it back at the end of the main queue
+	return s.client.PublishJob(ctx, PaymentQueue, job)
 }
 
-// ProcessRetryJobs moves ready retry jobs back to main queue
+// ProcessRetryJobs is now a no-op since we use single queue
 func (s *Service) ProcessRetryJobs(ctx context.Context) error {
-	now := float64(time.Now().Unix())
-	
-	// Get jobs ready for retry
-	result, err := s.client.rdb.ZRangeByScore(ctx, PaymentRetrySet, &redis.ZRangeBy{
-		Min: "0",
-		Max: fmt.Sprintf("%f", now),
-	}).Result()
-	
-	if err != nil {
-		return err
-	}
-	
-	for _, jobStr := range result {
-		var job PaymentJob
-		if err := json.Unmarshal([]byte(jobStr), &job); err != nil {
-			continue
-		}
-		
-		// Move back to main queue
-		if err := s.client.PublishJob(ctx, PaymentQueue, job); err != nil {
-			continue
-		}
-		
-		// Remove from retry set
-		s.client.rdb.ZRem(ctx, PaymentRetrySet, jobStr)
-	}
-	
+	// No longer needed - everything goes to main queue
 	return nil
 }
 
-// ConsumeDLQJob consumes a job from Dead Letter Queue
-func (s *Service) ConsumeDLQJob(ctx context.Context) (*PaymentJob, error) {
-	data, err := s.client.ConsumeJob(ctx, PaymentDLQ, DefaultConsumeTimeout)
-	if err != nil {
-		return nil, err
-	}
-
-	var job PaymentJob
-	if err := json.Unmarshal(data, &job); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal DLQ job: %w", err)
-	}
-
-	return &job, nil
-}
-
-// GetDLQLength returns the number of jobs in Dead Letter Queue
-func (s *Service) GetDLQLength(ctx context.Context) (int64, error) {
-	return s.client.QueueLength(ctx, PaymentDLQ)
-}
-
-// GetRetrySetLength returns the number of jobs in retry set
-func (s *Service) GetRetrySetLength(ctx context.Context) (int64, error) {
-	return s.client.rdb.ZCard(ctx, PaymentRetrySet).Result()
-}
+// DLQ methods removed - using single queue only
 
 // Close closes the Redis connection
 func (s *Service) Close() error {

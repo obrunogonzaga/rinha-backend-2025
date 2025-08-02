@@ -40,7 +40,7 @@ func (s *Server) HelloWorldHandler(c echo.Context) error {
 }
 
 func (s *Server) healthHandler(c echo.Context) error {
-	return c.JSON(http.StatusOK, s.db.Health())
+	return c.JSON(http.StatusOK, s.redisStorage.Health())
 }
 
 func (s *Server) createPaymentHandler(c echo.Context) error {
@@ -74,17 +74,16 @@ func (s *Server) createPaymentHandler(c echo.Context) error {
 			RequestedAt:   requestedAt,
 		}
 		
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		
-		if err := s.db.CreatePayment(ctx, payment); err != nil {
+		// Use Redis storage for instant response
+		if err := s.redisStorage.CreatePayment(ctx, payment); err != nil {
 			return
 		}
 		
-		redisCtx, redisCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer redisCancel()
-		
-		s.redisService.PublishPaymentJob(redisCtx, payment)
+		// Publish to Redis queue immediately
+		s.redisService.PublishPaymentJob(ctx, payment)
 	}()
 	
 	return nil
@@ -112,7 +111,8 @@ func (s *Server) paymentsSummaryHandler(c echo.Context) error {
 		}
 	}
 	
-	summary, err := s.db.GetPaymentSummary(c.Request().Context(), startDate, endDate)
+	// Use Redis aggregated summary for instant response
+	summary, err := s.redisStorage.GetPaymentSummary(c.Request().Context(), startDate, endDate)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get payment summary"})
 	}
@@ -121,7 +121,7 @@ func (s *Server) paymentsSummaryHandler(c echo.Context) error {
 }
 
 func (s *Server) clearPaymentsHandler(c echo.Context) error {
-	err := s.db.ClearPayments(c.Request().Context())
+	err := s.redisStorage.ClearPayments(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to clear payments"})
 	}

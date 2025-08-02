@@ -1,0 +1,103 @@
+
+Compose can now delegate builds to bake for better performance.
+ To do so, set COMPOSE_BAKE=true.
+#0 building with "orbstack" instance using docker driver
+
+#1 [api-1 internal] load build definition from Dockerfile
+#1 transferring dockerfile: 314B done
+#1 DONE 0.0s
+
+#2 [api-2 internal] load build definition from Dockerfile
+#2 transferring dockerfile: 314B done
+#2 DONE 0.0s
+
+#3 [api-2 internal] load metadata for docker.io/library/alpine:latest
+#3 DONE 0.3s
+
+#4 [api-1 internal] load metadata for docker.io/library/golang:1.23-alpine
+#4 DONE 0.3s
+
+#5 [api-1 internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 [api-2 internal] load .dockerignore
+#6 transferring context: 2B done
+#6 DONE 0.0s
+
+#7 [api-1 stage-1 1/4] FROM docker.io/library/alpine:latest@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1
+#7 DONE 0.0s
+
+#8 [api-2 builder 1/6] FROM docker.io/library/golang:1.23-alpine@sha256:ddcd26ec6b109c838725a1d93e3bec6d8b9c47f1fdc696b58820c63c70349c9a
+#8 resolve docker.io/library/golang:1.23-alpine@sha256:ddcd26ec6b109c838725a1d93e3bec6d8b9c47f1fdc696b58820c63c70349c9a done
+#8 DONE 0.0s
+
+#9 [api-1 internal] load build context
+#9 transferring context: 17.50kB 0.0s done
+#9 DONE 0.0s
+
+#10 [api-2 internal] load build context
+#10 transferring context: 17.50kB 0.0s done
+#10 DONE 0.0s
+
+#11 [api-1 builder 3/6] COPY go.mod go.sum ./
+#11 CACHED
+
+#12 [api-1 builder 2/6] WORKDIR /app
+#12 CACHED
+
+#13 [api-2 builder 4/6] RUN go mod download
+#13 CACHED
+
+#14 [api-2 builder 5/6] COPY . .
+#14 DONE 0.1s
+
+#15 [api-2 builder 6/6] RUN go build -o main cmd/api/main.go
+#15 DONE 7.8s
+
+#16 [api-1 stage-1 2/4] RUN apk --no-cache add ca-certificates
+#16 CACHED
+
+#17 [api-1 stage-1 3/4] WORKDIR /root/
+#17 CACHED
+
+#18 [api-1 stage-1 4/4] COPY --from=builder /app/main .
+#18 CACHED
+
+#19 [api-2] exporting to image
+#19 exporting layers done
+#19 writing image sha256:dccececd48e9c9ebf36c4a24b279adeefe44c14da8c5d575e1c3269fa1460e39 done
+#19 naming to docker.io/library/rinha-backend-2025-api-2 done
+#19 DONE 0.0s
+
+#20 [api-1] exporting to image
+#20 exporting layers done
+#20 writing image sha256:ff7189f21d9424f30f4de0854019efb82228b9398864ba7d57b251572fa1769c done
+#20 naming to docker.io/library/rinha-backend-2025-api-1 done
+#20 DONE 0.0s
+
+#21 [api-2] resolving provenance for metadata file
+#21 DONE 0.0s
+
+#22 [api-1] resolving provenance for metadata file
+#22 DONE 0.0s
+Attaching to api-1-1, api-2-1, nginx-1, psql_bp-1, redis-1
+nginx-1    | /docker-entrypoint.sh: /docker-entrypoint.d/ is not empty, will attempt to perform configuration
+nginx-1    | /docker-entrypoint.sh: Looking for shell scripts in /docker-entrypoint.d/
+nginx-1    | /docker-entrypoint.sh: Launching /docker-entrypoint.d/10-listen-on-ipv6-by-default.sh
+nginx-1    | 10-listen-on-ipv6-by-default.sh: info: Getting the checksum of /etc/nginx/conf.d/default.conf
+nginx-1    | 10-listen-on-ipv6-by-default.sh: info: Enabled listen on IPv6 in /etc/nginx/conf.d/default.conf
+nginx-1    | /docker-entrypoint.sh: Sourcing /docker-entrypoint.d/15-local-resolvers.envsh
+nginx-1    | /docker-entrypoint.sh: Launching /docker-entrypoint.d/20-envsubst-on-templates.sh
+nginx-1    | /docker-entrypoint.sh: Launching /docker-entrypoint.d/30-tune-worker-processes.sh
+nginx-1    | /docker-entrypoint.sh: Configuration complete; ready for start up
+[Kapi-1-1 exited with code 0
+[Kapi-2-1 exited with code 0
+redis-1    | 1:signal-handler (1754151568) Received SIGTERM scheduling shutdown...
+redis-1    | 1:M 02 Aug 2025 16:19:28.895 * User requested shutdown...
+redis-1    | 1:M 02 Aug 2025 16:19:28.895 * Saving the final RDB snapshot before exiting.
+redis-1    | 1:M 02 Aug 2025 16:19:28.903 * DB saved on disk
+redis-1    | 1:M 02 Aug 2025 16:19:28.903 # Redis is now ready to exit, bye bye...
+[Kpsql_bp-1 exited with code 0
+[Kredis-1 exited with code 0
+[Knginx-1 exited with code 0

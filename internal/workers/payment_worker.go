@@ -86,27 +86,25 @@ func (wp *PaymentWorkerPool) processPayment(job redis.PaymentJob, _ int) {
 		return
 	}
 	
-	correlationID, err := uuid.Parse(job.CorrelationID)
-	if err != nil {
+	correlationID, parseErr := uuid.Parse(job.CorrelationID)
+	if parseErr != nil {
 		return
 	}
 	
 	// Convert amount from cents to currency units
 	amount := float64(job.Amount) / 100
-	requestedAt := time.Now() // Use current time since it's not stored in Redis job
+	requestedAt := job.RequestedAt // Use consistent timestamp from original request
 
 	if err := wp.dbService.UpdatePaymentStatus(ctx, paymentID, models.PaymentStatusProcessing); err != nil {
 		return
 	}
 
+	// Simple single attempt - if fails, put back in queue
 	_, processorType, err := wp.processorService.ProcessPaymentWithFallback(ctx, correlationID, amount, requestedAt)
 	
 	if err != nil {
-		// Schedule for retry instead of marking as failed
-		if retryErr := wp.redisService.RetryPaymentJob(ctx, &job); retryErr != nil {
-			// Only fail if we can't even schedule retry
-			wp.dbService.UpdatePaymentStatus(ctx, paymentID, models.PaymentStatusFailed)
-		}
+		// Failed - put back in main queue for retry
+		wp.redisService.RetryPaymentJob(ctx, &job)
 		return
 	}
 
@@ -156,22 +154,22 @@ func (rp *RetryProcessor) Stop() {
 	log.Println("Retry processor stopped")
 }
 
-// processRetries continuously processes retry jobs
+// processRetries is simplified - no complex retry logic needed
 func (rp *RetryProcessor) processRetries() {
 	defer rp.wg.Done()
 	
-	ticker := time.NewTicker(10 * time.Second) // Check every 10 seconds
+	ticker := time.NewTicker(30 * time.Second) // Much less frequent since we use single queue
 	defer ticker.Stop()
 	
 	for {
 		select {
 		case <-ticker.C:
-			if err := rp.redisService.ProcessRetryJobs(rp.ctx); err != nil {
-				log.Printf("Retry processor failed to process retry jobs: %v", err)
-			}
+			// Just a health check - all retries go to main queue
+			rp.redisService.ProcessRetryJobs(rp.ctx)
 		case <-rp.ctx.Done():
-			log.Println("Retry processor goroutine stopping")
 			return
 		}
 	}
 }
+
+// No DLQ reprocessing needed with single queue approach

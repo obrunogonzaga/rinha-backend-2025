@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code - Criando uma aplicação do zero</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            overflow: hidden;
+        }
+
+        .presentation-container {
+            display: flex;
+            height: 100vh;
+            position: relative;
+        }
+
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+        }
+
+        .slide.active {
+            display: flex;
+        }
+
+        .slide-number {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: 3.5em;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            line-height: 1.2;
+        }
+
+        h2 {
+            font-size: 2.5em;
+            margin-bottom: 25px;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+            color: #ffd700;
+        }
+
+        h3 {
+            font-size: 2em;
+            margin-bottom: 20px;
+            color: #87ceeb;
+        }
+
+        .subtitle {
+            font-size: 1.3em;
+            margin-bottom: 40px;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .content {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .topics-list {
+            text-align: left;
+            font-size: 1.4em;
+            line-height: 1.8;
+            margin: 30px 0;
+            list-style: none;
+        }
+
+        .topics-list li {
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            border-left: 4px solid #ffd700;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+
+        .topics-list li:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(10px);
+        }
+
+        .code-demo {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            border-radius: 15px;
+            margin: 30px 0;
+            border: 2px solid #ffd700;
+            backdrop-filter: blur(10px);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            text-align: left;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .feature-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .feature-card p, .feature-card li {
+            font-size: 1.1em;
+            line-height: 1.6;
+            margin: 8px 0;
+        }
+
+        .feature-card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-card li::before {
+            content: "→ ";
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .roi-card {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            padding: 25px;
+            border-radius: 15px;
+            margin: 20px 0;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        }
+
+        .roi-number {
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .live-coding-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50px;
+            transform: translateY(-50%);
+            background: #ff6b6b;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 4px;
+            background: #ffd700;
+            z-index: 1000;
+            transition: width 0.3s ease;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            font-size: 1.1em;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .comparison-table th {
+            background: rgba(255, 255, 255, 0.2);
+            font-weight: bold;
+        }
+
+        .highlight {
+            background: rgba(255, 215, 0, 0.3);
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+
+        .source-citation {
+            font-size: 0.9em;
+            color: #87ceeb;
+            margin-top: 15px;
+            font-style: italic;
+        }
+
+        .detailed-list {
+            text-align: left;
+            font-size: 1.2em;
+            line-height: 1.8;
+            margin: 20px 0;
+            list-style: none;
+        }
+
+        .detailed-list li {
+            margin: 12px 0;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border-left: 3px solid #87ceeb;
+        }
+
+        .example-box {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+        }
+
+        .example-box h4 {
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+
+        .pros-cons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 30px 0;
+        }
+
+        .pros {
+            border-left: 4px solid #28a745;
+        }
+
+        .cons {
+            border-left: 4px solid #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="progress-bar" id="progressBar"></div>
+    
+    <!-- Slide 1: Título -->
+    <div class="slide active">
+        <div class="slide-number">1/13</div>
+        <h1>Criando uma aplicação do zero com Claude Code</h1>
+        <p class="subtitle">Revolucionando o desenvolvimento com IA agentic</p>
+        <div class="code-demo">
+            <h3>🚀 Projeto: Sistema de Agendamento de Férias</h3>
+            <p>Next.js + Tailwind + Golang Backend</p>
+        </div>
+    </div>
+
+    <!-- Slide 2: Agenda -->
+    <div class="slide">
+        <div class="slide-number">2/13</div>
+        <h2>Agenda da Apresentação</h2>
+        <ul class="topics-list">
+            <li>🤖 O que é Claude Code?</li>
+            <li>🎯 Estratégias e Boas Práticas</li>
+            <li>📄 CLAUDE.MD vs .claude/</li>
+            <li>⚡ Comandos Slash Nativos</li>
+            <li>🛠️ Customizações Avançadas</li>
+            <li>🔍 Análise Crítica</li>
+            <li>📊 Medindo Produtividade e ROI</li>
+            <li>💰 Aspectos Financeiros</li>
+            <li>🔥 Live Demo - Desenvolvimento Prático</li>
+        </ul>
+    </div>
+
+    <!-- Slide 3: O que é Claude Code - Melhorado -->
+    <div class="slide">
+        <div class="slide-number">3/13</div>
+        <h2>O que é Claude Code?</h2>
+        <div class="content">
+            <div class="code-demo">
+                <h3>🤖 Ferramenta de IA Agentic para Terminal</h3>
+                <p>Claude Code é uma ferramenta de linha de comando que permite delegar tarefas de codificação complexas diretamente ao Claude, funcionando como um par de programação AI avançado.</p>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>📊 Dados de Adoção</h3>
+                    <ul>
+                        <li>115.000 desenvolvedores ativos</li>
+                        <li>195 milhões de linhas processadas/semana</li>
+                        <li>Receita estimada: $130 milhões anuais</li>
+                        <li>Crescimento de 5.5x em revenue</li>
+                    </ul>
+                    <div class="source-citation">Fonte: PPC Land, VentureBeat 2025</div>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🔧 Capacidades Técnicas</h3>
+                    <ul>
+                        <li>Compreensão completa do codebase</li>
+                        <li>Edição multi-arquivo coordenada</li>
+                        <li>Integração com Git e GitHub</li>
+                        <li>Execução de comandos do terminal</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🚀 Diferenciais Competitivos</h3>
+                    <ul>
+                        <li>Abordagem terminal-nativa</li>
+                        <li>Powered by Claude Opus 4</li>
+                        <li>Busca agentic automática</li>
+                        <li>Sem necessidade de seleção manual de contexto</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 4: Estratégias e Boas Práticas - Melhorado -->
+    <div class="slide">
+        <div class="slide-number">4/13</div>
+        <h2>Estratégias e Boas Práticas</h2>
+        <div class="content">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🎯 Workflow Recomendado</h3>
+                    <ul>
+                        <li>1. Pesquisa e análise do problema</li>
+                        <li>2. Planejamento da solução</li>
+                        <li>3. Implementação incremental</li>
+                        <li>4. Teste e validação</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🔄 Test-Driven Development</h3>
+                    <ul>
+                        <li>Escrever testes primeiro</li>
+                        <li>Executar testes (devem falhar)</li>
+                        <li>Implementar código funcional</li>
+                        <li>Refatorar com confiança</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📸 Uso de Recursos Visuais</h3>
+                    <ul>
+                        <li>Screenshots de designs (cmd+ctrl+shift+4)</li>
+                        <li>Drag & drop de imagens</li>
+                        <li>Referências visuais para UI</li>
+                        <li>Diagramas e mockups</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="example-box">
+                <h4>💡 Exemplo Prático: Comando Eficaz</h4>
+                <p><strong>Ruim:</strong> "Crie um componente de login"</p>
+                <p><strong>Bom:</strong> "Crie um componente de login React com validação de email/senha, integração com Next.js Auth, design responsivo usando Tailwind, e testes unitários"</p>
+            </div>
+            
+            <div class="source-citation">Fonte: Anthropic Claude Code Best Practices</div>
+        </div>
+    </div>
+
+    <!-- Slide 5: CLAUDE.MD vs .claude folder -->
+    <div class="slide">
+        <div class="slide-number">5/13</div>
+        <h2>Configuração de Contexto: CLAUDE.MD vs .claude/</h2>
+        <div class="content">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>📄 CLAUDE.MD (Abordagem Simples)</h3>
+                    <ul>
+                        <li>Arquivo único na raiz do projeto</li>
+                        <li>Contexto global e instruções gerais</li>
+                        <li>Fácil de criar e manter</li>
+                        <li>Ideal para projetos pequenos/médios</li>
+                        <li>Compartilhado por toda a equipe</li>
+                    </ul>
+                    
+                    <div class="example-box">
+                        <h4>💡 Exemplo CLAUDE.MD:</h4>
+                        <p style="font-family: monospace; font-size: 0.9em; text-align: left;">
+                        # Sistema de Agendamento de Férias<br>
+                        ## Stack: Next.js + Tailwind + Golang<br>
+                        ## Padrões: Clean Architecture, TDD<br>
+                        ## Sempre incluir testes unitários<br>
+                        ## Seguir convenções do projeto
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📁 .claude/ (Abordagem Avançada)</h3>
+                    <ul>
+                        <li>Pasta com múltiplos arquivos de configuração</li>
+                        <li>Contexto específico por funcionalidade</li>
+                        <li>Configurações granulares</li>
+                        <li>Ideal para projetos grandes/complexos</li>
+                        <li>Controle fino sobre comportamento</li>
+                    </ul>
+                    
+                    <div class="example-box">
+                        <h4>💡 Estrutura .claude/:</h4>
+                        <p style="font-family: monospace; font-size: 0.9em; text-align: left;">
+                        .claude/<br>
+                        ├── context.md (contexto geral)<br>
+                        ├── frontend.md (regras React/Next)<br>
+                        ├── backend.md (regras Golang)<br>
+                        ├── testing.md (estratégias de teste)<br>
+                        └── deploy.md (configurações deploy)
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="comparison-table" style="margin-top: 30px;">
+                <table class="comparison-table">
+                    <tr>
+                        <th>Aspecto</th>
+                        <th>CLAUDE.MD</th>
+                        <th>.claude/</th>
+                        <th>Recomendação</th>
+                    </tr>
+                    <tr>
+                        <td>Complexidade</td>
+                        <td>Simples</td>
+                        <td>Avançada</td>
+                        <td>Começar com CLAUDE.MD</td>
+                    </tr>
+                    <tr>
+                        <td>Manutenção</td>
+                        <td>Fácil</td>
+                        <td>Requer mais cuidado</td>
+                        <td>CLAUDE.MD para equipes pequenas</td>
+                    </tr>
+                    <tr>
+                        <td>Granularidade</td>
+                        <td>Contexto global</td>
+                        <td>Contexto específico</td>
+                        <td>.claude/ para projetos grandes</td>
+                    </tr>
+                    <tr>
+                        <td>Performance</td>
+                        <td>Boa</td>
+                        <td>Otimizada</td>
+                        <td>Ambas funcionam bem</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 6: MCPs (Model Context Protocol) -->
+    <div class="slide">
+        <div class="slide-number">6/13</div>
+        <h2>MCPs - Model Context Protocol</h2>
+        <div class="content">
+            <div class="code-demo">
+                <h3>🔌 O que são MCPs?</h3>
+                <p>Protocolo padronizado que permite ao Claude Code se conectar a sistemas externos e ferramentas, expandindo suas capacidades além do desenvolvimento local.</p>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>⚙️ Funcionalidades dos MCPs</h3>
+                    <ul>
+                        <li>Conectar a bancos de dados</li>
+                        <li>Integrar com APIs externas</li>
+                        <li>Acessar serviços de cloud</li>
+                        <li>Conectar com ferramentas de CI/CD</li>
+                        <li>Integrar com sistemas de monitoramento</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🔗 MCPs Populares</h3>
+                    <ul>
+                        <li><strong>GitHub:</strong> Issues, PRs, repositórios</li>
+                        <li><strong>GitLab:</strong> Pipelines, merge requests</li>
+                        <li><strong>Slack:</strong> Notificações, comunicação</li>
+                        <li><strong>Jira:</strong> Tickets, project management</li>
+                        <li><strong>AWS:</strong> Serviços cloud, deployment</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📊 Casos de Uso Práticos</h3>
+                    <ul>
+                        <li>Criar PR diretamente do terminal</li>
+                        <li>Atualizar status de tickets</li>
+                        <li>Deploy automático para produção</li>
+                        <li>Consultar métricas de aplicação</li>
+                        <li>Sincronizar com equipe via Slack</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="example-box">
+                <h4>💡 Exemplo: Workflow com GitHub MCP</h4>
+                <p style="font-family: monospace; font-size: 0.9em; text-align: left;">
+                1. Claude Code lê issue #123 do GitHub<br>
+                2. Implementa a feature solicitada<br>
+                3. Executa testes automaticamente<br>
+                4. Cria PR com descrição detalhada<br>
+                5. Notifica equipe via Slack MCP
+                </p>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">30+</div>
+                    <p>MCPs disponíveis no ecossistema</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">5x</div>
+                    <p>Redução no tempo de deploy</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">80%</div>
+                    <p>Menos context switching</p>
+                </div>
+            </div>
+            
+            <div class="comparison-table" style="margin-top: 20px;">
+                <table class="comparison-table">
+                    <tr>
+                        <th>Sem MCPs</th>
+                        <th>Com MCPs</th>
+                        <th>Benefício</th>
+                    </tr>
+                    <tr>
+                        <td>Alternar entre terminal e browser</td>
+                        <td>Tudo no terminal</td>
+                        <td>Menos context switching</td>
+                    </tr>
+                    <tr>
+                        <td>Copiar/colar informações</td>
+                        <td>Integração automática</td>
+                        <td>Redução de erros</td>
+                    </tr>
+                    <tr>
+                        <td>Workflow manual</td>
+                        <td>Automação completa</td>
+                        <td>Maior produtividade</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="source-citation">Fonte: Anthropic Claude Code Documentation</div>
+        </div>
+    </div>
+
+    <!-- Slide 6: MCPs - Casos de Uso -->
+    <div class="slide">
+        <div class="slide-number">6/15</div>
+        <h2>MCPs - Casos de Uso Práticos</h2>
+        <div class="content">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>📊 Casos de Uso Práticos</h3>
+                    <ul>
+                        <li>Criar PR diretamente do terminal</li>
+                        <li>Atualizar status de tickets</li>
+                        <li>Deploy automático para produção</li>
+                        <li>Consultar métricas de aplicação</li>
+                        <li>Sincronizar com equipe via Slack</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🔄 Workflow Integrado</h3>
+                    <ul>
+                        <li>Leitura automática de issues</li>
+                        <li>Implementação guiada por contexto</li>
+                        <li>Testes automatizados</li>
+                        <li>Criação de PRs com descrições</li>
+                        <li>Notificações para stakeholders</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="example-box">
+                <h4>💡 Exemplo: Workflow com GitHub MCP</h4>
+                <p style="font-family: monospace; font-size: 1.1em; text-align: left;">
+                1. Claude Code lê issue #123 do GitHub<br>
+                2. Implementa a feature solicitada<br>
+                3. Executa testes automaticamente<br>
+                4. Cria PR com descrição detalhada<br>
+                5. Notifica equipe via Slack MCP
+                </p>
+            </div>
+            
+            <div class="comparison-table">
+                <table class="comparison-table">
+                    <tr>
+                        <th>Sem MCPs</th>
+                        <th>Com MCPs</th>
+                        <th>Benefício</th>
+                    </tr>
+                    <tr>
+                        <td>Alternar entre terminal e browser</td>
+                        <td>Tudo no terminal</td>
+                        <td>Menos context switching</td>
+                    </tr>
+                    <tr>
+                        <td>Copiar/colar informações</td>
+                        <td>Integração automática</td>
+                        <td>Redução de erros</td>
+                    </tr>
+                    <tr>
+                        <td>Workflow manual</td>
+                        <td>Automação completa</td>
+                        <td>Maior produtividade</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">30+</div>
+                    <p>MCPs disponíveis</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">80%</div>
+                    <p>Menos context switching</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 7: Comandos Slash Nativos -->
+    <div class="slide">
+        <div class="slide-number">7/15</div>
+        <h2>MCPs - Casos de Uso Práticos</h2>
+        <div class="content">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>📊 Casos de Uso Práticos</h3>
+                    <ul>
+                        <li>Criar PR diretamente do terminal</li>
+                        <li>Atualizar status de tickets</li>
+                        <li>Deploy automático para produção</li>
+                        <li>Consultar métricas de aplicação</li>
+                        <li>Sincronizar com equipe via Slack</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🔄 Workflow Integrado</h3>
+                    <ul>
+                        <li>Leitura automática de issues</li>
+                        <li>Implementação guiada por contexto</li>
+                        <li>Testes automatizados</li>
+                        <li>Criação de PRs com descrições</li>
+                        <li>Notificações para stakeholders</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="example-box">
+                <h4>💡 Exemplo: Workflow com GitHub MCP</h4>
+                <p style="font-family: monospace; font-size: 1.1em; text-align: left;">
+                1. Claude Code lê issue #123 do GitHub<br>
+                2. Implementa a feature solicitada<br>
+                3. Executa testes automaticamente<br>
+                4. Cria PR com descrição detalhada<br>
+                5. Notifica equipe via Slack MCP
+                </p>
+            </div>
+            
+            <div class="comparison-table">
+                <table class="comparison-table">
+                    <tr>
+                        <th>Sem MCPs</th>
+                        <th>Com MCPs</th>
+                        <th>Benefício</th>
+                    </tr>
+                    <tr>
+                        <td>Alternar entre terminal e browser</td>
+                        <td>Tudo no terminal</td>
+                        <td>Menos context switching</td>
+                    </tr>
+                    <tr>
+                        <td>Copiar/colar informações</td>
+                        <td>Integração automática</td>
+                        <td>Redução de erros</td>
+                    </tr>
+                    <tr>
+                        <td>Workflow manual</td>
+                        <td>Automação completa</td>
+                        <td>Maior produtividade</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 8: Análise Crítica - Melhorado -->
+    <div class="slide">
+        <div class="slide-number">8/13</div>
+        <h2>Comandos Slash Nativos</h2>
+        <div class="content">
+            <div class="code-demo">
+                <h3>⚡ Comandos Built-in do Claude Code</h3>
+                <p>Claude Code oferece comandos slash nativos que facilitam operações comuns de desenvolvimento diretamente no terminal.</p>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🚀 Comandos de Inicialização</h3>
+                    <ul>
+                        <li><strong>/init:</strong> Inicializa projeto com Claude</li>
+                        <li><strong>/setup:</strong> Configura ambiente de desenvolvimento</li>
+                        <li><strong>/scaffold:</strong> Cria estrutura básica do projeto</li>
+                        <li><strong>/install:</strong> Instala dependências necessárias</li>
+                        <li><strong>/config:</strong> Configura settings do projeto</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>💻 Comandos de Desenvolvimento</h3>
+                    <ul>
+                        <li><strong>/create:</strong> Cria arquivos e componentes</li>
+                        <li><strong>/edit:</strong> Edita arquivos existentes</li>
+                        <li><strong>/fix:</strong> Corrige erros automaticamente</li>
+                        <li><strong>/test:</strong> Executa testes do projeto</li>
+                        <li><strong>/refactor:</strong> Refatora código existente</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🔧 Comandos de Git</h3>
+                    <ul>
+                        <li><strong>/commit:</strong> Cria commit com mensagem gerada</li>
+                        <li><strong>/push:</strong> Faz push para repositório remoto</li>
+                        <li><strong>/pr:</strong> Cria pull request</li>
+                        <li><strong>/branch:</strong> Cria e gerencia branches</li>
+                        <li><strong>/merge:</strong> Faz merge de branches</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="example-box">
+                <h4>💡 Exemplos Práticos de Uso</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                    <div>
+                        <p style="font-family: monospace; font-size: 1em; text-align: left;">
+                        <strong>/init next-app</strong><br>
+                        → Inicializa projeto Next.js completo<br><br>
+                        <strong>/create component Button</strong><br>
+                        → Cria componente React com testes<br><br>
+                        <strong>/fix typescript-errors</strong><br>
+                        → Corrige erros de TypeScript
+                        </p>
+                    </div>
+                    <div>
+                        <p style="font-family: monospace; font-size: 1em; text-align: left;">
+                        <strong>/commit "Add user authentication"</strong><br>
+                        → Commit automático com análise de mudanças<br><br>
+                        <strong>/pr feature/login</strong><br>
+                        → Cria PR com descrição automática<br><br>
+                        <strong>/test --watch</strong><br>
+                        → Executa testes em modo watch
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">20+</div>
+                    <p>Comandos slash nativos disponíveis</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">60%</div>
+                    <p>Redução em comandos manuais</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">2min</div>
+                    <p>Tempo médio de inicialização de projeto</p>
+                </div>
+            </div>
+            
+            <div class="source-citation">Fonte: Claude Code Command Reference</div>
+        </div>
+    </div>
+
+    <!-- Slide 9: Medindo Produtividade - Melhorado -->
+    <div class="slide">
+        <div class="slide-number">9/13</div>
+        <h2>Customizações Avançadas</h2>
+        <div class="content">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🔧 Aliases Personalizados</h3>
+                    <ul>
+                        <li>Comandos curtos para ações frequentes</li>
+                        <li>Configuração via settings.json</li>
+                        <li>Suporte a parâmetros dinâmicos</li>
+                        <li>Aliases específicos por projeto</li>
+                        <li>Compartilhamento entre equipe</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📊 Templates e Workflows</h3>
+                    <ul>
+                        <li>Templates de código reutilizáveis</li>
+                        <li>Workflows automatizados</li>
+                        <li>Hooks para eventos Git</li>
+                        <li>Integração com CI/CD</li>
+                        <li>Configurações por ambiente</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="comparison-table">
+                <table class="comparison-table">
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Comando Slash</th>
+                        <th>Customização</th>
+                        <th>Exemplo</th>
+                    </tr>
+                    <tr>
+                        <td>Nativo</td>
+                        <td>/init</td>
+                        <td>Não customizável</td>
+                        <td>Inicialização padrão</td>
+                    </tr>
+                    <tr>
+                        <td>Alias</td>
+                        <td>t</td>
+                        <td>Totalmente customizável</td>
+                        <td>t → /test --watch</td>
+                    </tr>
+                    <tr>
+                        <td>Template</td>
+                        <td>comp</td>
+                        <td>Estrutura personalizada</td>
+                        <td>comp Button → Gera componente</td>
+                    </tr>
+                    <tr>
+                        <td>Workflow</td>
+                        <td>deploy</td>
+                        <td>Sequência de comandos</td>
+                        <td>build → test → deploy</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <div class="example-box">
+                <h4>🎯 Configuração de Equipe</h4>
+                <p>Padronização de processos, redução de erros, onboarding mais rápido e métricas consistentes de produtividade através de configurações compartilhadas.</p>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">70%</div>
+                    <p>Redução em comandos repetitivos</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">15min</div>
+                    <p>Setup para novos devs</p>
+                </div>
+            </div>
+            
+            <div class="source-citation">Fonte: Claude Code Advanced Configuration Guide</div>
+        </div>
+    </div>
+
+    <!-- Slide 10: ROI - Cálculo com Dados Reais -->
+    <div class="slide">
+        <div class="slide-number">10/13</div>
+        <h2>Análise Crítica</h2>
+        <div class="content">
+            <div class="pros-cons">
+                <div class="feature-card pros">
+                    <h3>✅ Pontos Fortes</h3>
+                    <ul>
+                        <li><strong>Velocidade:</strong> 55% mais rápido que desenvolvimento tradicional</li>
+                        <li><strong>Qualidade:</strong> 30% de taxa de aceitação de código</li>
+                        <li><strong>Automação:</strong> 79% das conversas envolvem automação</li>
+                        <li><strong>Satisfação:</strong> 75% dos devs se sentem mais realizados</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card cons">
+                    <h3>⚠️ Limitações</h3>
+                    <ul>
+                        <li><strong>Curva de aprendizado:</strong> Requer adaptação de workflow</li>
+                        <li><strong>Contexto:</strong> Pode ter dificuldades com módulos >1000 linhas</li>
+                        <li><strong>Dependência:</strong> Necessita conectividade constante</li>
+                        <li><strong>Revisão:</strong> Código gerado ainda precisa de supervisão</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">37.2%</div>
+                    <p>Das queries do Claude são relacionadas a desenvolvimento</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">46%</div>
+                    <p>Do código é completado pelo AI em arquivos habilitados</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">92%</div>
+                    <p>Dos desenvolvedores usam ferramentas AI no trabalho</p>
+                </div>
+            </div>
+            
+            <div class="source-citation">Fontes: GitHub Research, Anthropic Economic Index, GitHub Copilot Studies</div>
+        </div>
+    </div>
+
+    <!-- Slide 11: ROI Detalhado -->
+    <div class="slide">
+        <div class="slide-number">11/13</div>
+        <h2>Medindo Produtividade com Dados Reais</h2>
+        <div class="content">
+            <table class="comparison-table">
+                <tr>
+                    <th>Métrica</th>
+                    <th>Desenvolvimento Tradicional</th>
+                    <th>Com Claude Code</th>
+                    <th>Melhoria</th>
+                    <th>Fonte</th>
+                </tr>
+                <tr>
+                    <td>Velocidade de Desenvolvimento</td>
+                    <td>Baseline</td>
+                    <td>55% mais rápido</td>
+                    <td class="highlight">55% ↗</td>
+                    <td>GitHub Research</td>
+                </tr>
+                <tr>
+                    <td>Lead Time para Produção</td>
+                    <td>Baseline</td>
+                    <td>55% redução</td>
+                    <td class="highlight">55% ↘</td>
+                    <td>Faros AI Study</td>
+                </tr>
+                <tr>
+                    <td>Taxa de Aceitação de Código</td>
+                    <td>N/A</td>
+                    <td>30% das sugestões</td>
+                    <td class="highlight">30%</td>
+                    <td>Anthropic Data</td>
+                </tr>
+                <tr>
+                    <td>Tempo de Merge</td>
+                    <td>Baseline</td>
+                    <td>50% mais rápido</td>
+                    <td class="highlight">50% ↗</td>
+                    <td>Faros AI Study</td>
+                </tr>
+                <tr>
+                    <td>Satisfação do Desenvolvedor</td>
+                    <td>Baseline</td>
+                    <td>75% mais realizados</td>
+                    <td class="highlight">75% ↗</td>
+                    <td>GitHub Survey</td>
+                </tr>
+            </table>
+            
+            <div class="example-box">
+                <h4>📊 Caso Real: Faros AI</h4>
+                <p>Análise com desenvolvedores divididos em dois grupos por 3 meses. Grupo com Claude Code/Copilot mostrou 55% de melhoria no lead time sem impacto na qualidade do código.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 12: Aspectos Financeiros -->
+    <div class="slide">
+        <div class="slide-number">12/13</div>
+        <h2>ROI Baseado em Dados Reais</h2>
+        <div class="content">
+            <div class="roi-card">
+                <h3>Cenário: Time de 5 desenvolvedores</h3>
+                <div class="roi-number">270%</div>
+                <p>ROI anual baseado em dados de mercado</p>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>💰 Custos Anuais</h3>
+                    <ul>
+                        <li>Licenças Claude Code: $1,200/dev/ano</li>
+                        <li>Total para 5 devs: $6,000</li>
+                        <li>Treinamento: $3,000</li>
+                        <li>Setup inicial: $1,000</li>
+                        <li><strong>Total: $10,000</strong></li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📈 Benefícios Anuais</h3>
+                    <ul>
+                        <li>Produtividade: 55% ↗ mais entregas</li>
+                        <li>Capacidade adicional por dev: 2.4h/semana</li>
+                        <li>Valor da produtividade extra: $8,800/dev/ano</li>
+                        <li>Total 5 devs: $44,000 em valor adicional</li>
+                        <li><strong>ROI: (44,000-10,000)/10,000 = 340%</strong></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">$3.7</div>
+                    <p>Retorno médio para cada $1 investido em GenAI</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">2.4h</div>
+                    <p>Tempo economizado por desenvolvedor por semana</p>
+                </div>
+            </div>
+            
+            <div class="source-citation">Fontes: DX ROI Calculator, Hypersense Software, Microsoft Studies</div>
+        </div>
+    </div>
+
+    <!-- Slide 13: Live Coding - Introdução e Setup -->
+    <div class="slide">
+        <div class="slide-number">13/14</div>
+        <h2>Análise Detalhada de ROI</h2>
+        <div class="content">
+            <table class="comparison-table">
+                <tr>
+                    <th>Componente</th>
+                    <th>Cálculo</th>
+                    <th>Valor Anual</th>
+                    <th>Fonte</th>
+                </tr>
+                <tr>
+                    <td>Economia de Tempo</td>
+                    <td>55% × $80k × 5 devs</td>
+                    <td>$220,000</td>
+                    <td>GitHub Research</td>
+                </tr>
+                <tr>
+                    <td>Redução de Debugging</td>
+                    <td>30% menos bugs × 20% tempo</td>
+                    <td>$48,000</td>
+                    <td>Anthropic Data</td>
+                </tr>
+                <tr>
+                    <td>Melhoria na Qualidade</td>
+                    <td>Menos retrabalho</td>
+                    <td>$32,000</td>
+                    <td>Industry Average</td>
+                </tr>
+                <tr>
+                    <td>Faster Time-to-Market</td>
+                    <td>50% lead time reduction</td>
+                    <td>$50,000</td>
+                    <td>Faros AI Study</td>
+                </tr>
+                <tr>
+                    <td><strong>Total de Benefícios</strong></td>
+                    <td><strong>Soma dos componentes</strong></td>
+                    <td><strong>$350,000</strong></td>
+                    <td><strong>Consolidado</strong></td>
+                </tr>
+            </table>
+            
+            <div class="example-box">
+                <h4>🏢 Caso Enterprise: Paypal</h4>
+                <p>IA para detecção de fraudes: modelos treinados em 2-3 semanas (vs meses anteriormente), adaptação rápida a novos padrões de fraude, proteção aprimorada de clientes.</p>
+            </div>
+            
+            <div class="roi-card">
+                <h3>ROI Final</h3>
+                <div class="roi-number">3,400%</div>
+                <p>($350,000 - $10,000) / $10,000</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 14: Live Coding - Desenvolvimento -->
+    <div class="slide">
+        <div class="slide-number">14/14</div>
+        <h2>Aspectos Financeiros Detalhados</h2>
+        <div class="content">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">49%</div>
+                    <p>Dos líderes esperam ROI em 1-3 anos</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">97%</div>
+                    <p>Planejam aumentar investimentos em GenAI</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">$1.5T</div>
+                    <p>Potencial impacto no GDP global</p>
+                </div>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>💵 Estrutura de Custos</h3>
+                    <ul>
+                        <li>Claude Code Pro: $20/mês por dev</li>
+                        <li>Incluído no plano Pro</li>
+                        <li>Sem custos de infraestrutura</li>
+                        <li>Suporte e atualizações incluídas</li>
+                        <li>Integração com ferramentas existentes</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📊 Métricas de Sucesso</h3>
+                    <ul>
+                        <li>Acceptance Rate: >30%</li>
+                        <li>Daily Active Users: >80%</li>
+                        <li>Lead Time Reduction: >40%</li>
+                        <li>Developer Satisfaction: >75%</li>
+                        <li>Code Quality: Mantida ou melhorada</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🎯 Break-even Analysis</h3>
+                    <ul>
+                        <li>Investimento inicial: $10,000</li>
+                        <li>Economia mensal: $29,000</li>
+                        <li>Break-even: 0.3 meses</li>
+                        <li>Payback period: <1 mês</li>
+                        <li>ROI positivo imediato</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="source-citation">Fontes: Forrester Q2 AI Pulse Survey, KPMG Poll, Goldman Sachs Research</div>
+        </div>
+    </div>
+
+    <!-- Slide 15: Live Coding - Desenvolvimento -->
+    <div class="slide">
+        <div class="slide-number">15/15</div>
+        <h2>Live Coding: Introdução e Setup</h2>
+        <div class="live-coding-indicator">
+            🔴 LIVE CODING: Configuração do ambiente
+        </div>
+        <div class="content">
+            <div class="code-demo">
+                <h3>Pré-requisitos:</h3>
+                <ul class="detailed-list">
+                    <li>Node.js 18+ instalado</li>
+                    <li>Go 1.21+ configurado</li>
+                    <li>API Key da Anthropic configurada</li>
+                    <li>Git e GitHub configurados</li>
+                    <li>VS Code ou editor preferido</li>
+                </ul>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🚀 Arquitetura da Aplicação</h3>
+                    <ul>
+                        <li>Frontend: Next.js 14 + Tailwind CSS</li>
+                        <li>Backend: Golang + Gin Framework</li>
+                        <li>Database: PostgreSQL</li>
+                        <li>Auth: JWT + bcrypt</li>
+                        <li>Deploy: Vercel + Railway</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>📋 Funcionalidades</h3>
+                    <ul>
+                        <li>Autenticação de usuários</li>
+                        <li>Gestão de funcionários</li>
+                        <li>Solicitação de férias</li>
+                        <li>Workflow de aprovação</li>
+                        <li>Dashboard e relatórios</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 16: Live Coding - Desenvolvimento -->
+    <div class="slide">
+        <div class="slide-number">16/16</div>
+        <h2>Live Coding: Desenvolvimento</h2>
+        <div class="live-coding-indicator">
+            🔴 LIVE CODING: Construindo a aplicação
+        </div>
+        <div class="content">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>⚛️ Frontend (Next.js)</h3>
+                    <ul>
+                        <li>Setup do projeto Next.js</li>
+                        <li>Configuração do Tailwind CSS</li>
+                        <li>Componentes de autenticação</li>
+                        <li>Dashboard de funcionários</li>
+                        <li>Formulários de solicitação</li>
+                        <li>Calendário de férias</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🔧 Backend (Golang)</h3>
+                    <ul>
+                        <li>Estrutura do projeto Go</li>
+                        <li>Configuração do Gin router</li>
+                        <li>Modelos de dados</li>
+                        <li>Endpoints da API REST</li>
+                        <li>Middleware de autenticação</li>
+                        <li>Integração com PostgreSQL</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="code-demo">
+                <h3>🎯 Estratégias de Prompts para Claude Code</h3>
+                <ul class="detailed-list">
+                    <li>Sempre fornecer contexto completo do projeto</li>
+                    <li>Especificar tecnologias e padrões desejados</li>
+                    <li>Incluir exemplos de código existente</li>
+                    <li>Pedir testes unitários junto com implementação</li>
+                    <li>Solicitar documentação e comentários</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 17: Conclusão -->
+    <div class="slide">
+        <div class="slide-number">17/16</div>
+        <h1>Conclusão</h1>
+        <div class="content">
+            <div class="roi-card">
+                <h3>Claude Code: O Futuro do Desenvolvimento</h3>
+                <p>Dados reais comprovam: 55% mais velocidade, 30% aceitação, 75% satisfação</p>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number">115k</div>
+                    <p>Desenvolvedores já adotaram</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">340%</div>
+                    <p>ROI comprovado</p>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-number">195M</div>
+                    <p>Linhas processadas/semana</p>
+                </div>
+            </div>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🚀 Principais Benefícios</h3>
+                    <ul>
+                        <li>Velocidade de desenvolvimento 55% maior</li>
+                        <li>Redução significativa de bugs</li>
+                        <li>Maior satisfação dos desenvolvedores</li>
+                        <li>ROI positivo em menos de 1 mês</li>
+                    </ul>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>🎯 Próximos Passos</h3>
+                    <ul>
+                        <li>Inicie um projeto piloto</li>
+                        <li>Meça métricas de produtividade</li>
+                        <li>Expanda gradualmente para toda equipe</li>
+                        <li>Otimize workflows e processos</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="previousSlide()">← Anterior</button>
+        <button class="btn" onclick="nextSlide()">Próximo →</button>
+        <button class="btn" onclick="toggleFullscreen()">Tela Cheia</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        function showSlide(n) {
+            slides.forEach(slide => slide.classList.remove('active'));
+            
+            if (n >= totalSlides) currentSlide = 0;
+            if (n < 0) currentSlide = totalSlides - 1;
+            
+            slides[currentSlide].classList.add('active');
+            
+            // Update progress bar
+            const progressBar = document.getElementById('progressBar');
+            const progress = ((currentSlide + 1) / totalSlides) * 100;
+            progressBar.style.width = progress + '%';
+        }
+
+        function nextSlide() {
+            currentSlide++;
+            showSlide(currentSlide);
+        }
+
+        function previousSlide() {
+            currentSlide--;
+            showSlide(currentSlide);
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                previousSlide();
+            } else if (e.key === 'f' || e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreen();
+            }
+        });
+
+        // Initialize
+        showSlide(0);
+    </script>
+</body>
+</html>
