@@ -1,3 +1,0 @@
-- [x] Configurar docker-compose payment-processor
-- [ ] Criar docker compose para backend `/payments`
-- [ ] Configurar rede `payment-processor` nos serviços [exemplo](https://github.com/zanfranceschi/rinha-de-backend-2025/blob/c1fef63d23ee7cab54ebd1fd03cb20565536947c/participantes/luizcordista-go/docker-compose.yml#L74)
